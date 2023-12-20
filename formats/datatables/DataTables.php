@@ -811,6 +811,7 @@ class DataTables extends ResultPrinter {
 		$qobj = $querySegmentList[$rootid];
 
 		$property = new DIProperty( DIProperty::newFromUserLabel( $printRequest->getCanonicalLabel() ) );
+		$propTypeid = $property->findPropertyTypeID();
 
 		if ( $isCategory ) {
 
@@ -904,7 +905,7 @@ class DataTables extends ResultPrinter {
 				return [];
 			}
 
-			list( $diType, $isIdField, $fields, $groupBy, $orderBy ) = $this->fetchValuesByGroup( $property, $p_alias );
+			list( $diType, $isIdField, $fields, $groupBy, $orderBy ) = $this->fetchValuesByGroup( $property, $p_alias, $propTypeid );
 
 			/*
 			---GENERATED DATATABLES
@@ -1193,7 +1194,7 @@ class DataTables extends ResultPrinter {
 	 * @param string $p_alias
 	 * @return array
 	 */
-	private function fetchValuesByGroup( DIProperty $property, $p_alias ) {
+	private function fetchValuesByGroup( DIProperty $property, $p_alias, $propTypeId ) {
 
 		$tableid = $this->store->findPropertyTableID( $property );
 		// $entityIdManager = $this->store->getObjectIds();
@@ -1248,7 +1249,10 @@ class DataTables extends ResultPrinter {
 			$orderBy = "count DESC, i.smw_sort ASC";
 		} elseif ( $diType === DataItem::TYPE_BLOB ) {
 			$fields = [ "$p_alias.o_hash, $p_alias.o_blob", "COUNT( $p_alias.o_hash ) as count" ];
-			$groupBy = "$p_alias.o_hash, $p_alias.o_blob";
+
+			// @see DIBlobHandler	
+			$groupBy = ( $propTypeId !== '_keyw' ? "$p_alias.o_hash, $p_alias.o_blob"
+					: "$p_alias.o_hash" );
 		} elseif ( $diType === DataItem::TYPE_URI ) {
 			$fields = [ "$p_alias.o_serialized, $p_alias.o_blob", "COUNT( $p_alias.o_serialized ) as count" ];
 			$groupBy = "$p_alias.o_serialized, $p_alias.o_blob";
