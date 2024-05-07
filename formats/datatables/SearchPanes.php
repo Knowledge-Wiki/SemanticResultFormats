@@ -128,9 +128,9 @@ class SearchPanes {
 
 		$conditionBuilder = $this->queryEngineFactory->newConditionBuilder();
 
+		\SMW\SQLStore\QueryEngine\QuerySegment::$qnum = 20;
 		$rootid = $conditionBuilder->buildCondition( $newQuery );
 
-		\SMW\SQLStore\QueryEngine\QuerySegment::$qnum = 0;
 		$querySegmentList = $conditionBuilder->getQuerySegmentList();
 
 		$querySegmentListProcessor = $this->queryEngineFactory->newQuerySegmentListProcessor();
