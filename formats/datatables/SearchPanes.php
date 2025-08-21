@@ -1,5 +1,4 @@
 <?php
-
 /**
  * SRF DataTables and SMWAPI.
  *
@@ -80,10 +79,6 @@ class SearchPanes {
 			return $this->searchPanesMainlabel( $printRequest, $searchPanesOptions, $searchPanesParameterOptions );
 		}
 
-		// create a new query for each printout/pane
-		// and retrieve the query segment related to it
-		// then perform the real query to get the results
-
 		$queryParams = [
 			'limit' => $this->datatables->query->getLimit(),
 			'offset' => $this->datatables->query->getOffset(),
@@ -91,15 +86,8 @@ class SearchPanes {
 		];
 		$queryParams = SMWQueryProcessor::getProcessedParams( $queryParams, [] );
 
-		// @TODO @FIXME
-		// get original description and add a conjunction
-		// $queryDescription = $query->getDescription();
-		// $queryCount = new \SMWQuery($queryDescription);
-		// ...
-
 		$isCategory = $printRequest->getMode() === PrintRequest::PRINT_CATS;
 
-		// @TODO @FIXME cover PRINT_CHAIN as well
 		$newQuery = SMWQueryProcessor::createQuery(
 			$this->datatables->query->getQueryString() . ( !$isCategory ? '[[' . $canonicalLabel . '::+]]' : '' ),
 			$queryParams,
@@ -111,17 +99,13 @@ class SearchPanes {
 		$queryDescription->setPrintRequests( [ $printRequest ] );
 
 		$conditionBuilder = $this->queryEngineFactory->newConditionBuilder();
-
 		$rootid = $conditionBuilder->buildCondition( $newQuery );
 
 		QuerySegment::$qnum = 0;
 		$querySegmentList = $conditionBuilder->getQuerySegmentList();
 
 		$querySegmentListProcessor = $this->queryEngineFactory->newQuerySegmentListProcessor();
-
 		$querySegmentListProcessor->setQuerySegmentList( $querySegmentList );
-
-		// execute query tree, resolve all dependencies
 		$querySegmentListProcessor->process( $rootid );
 
 		$qobj = $querySegmentList[$rootid];
@@ -129,68 +113,80 @@ class SearchPanes {
 		$property = new DIProperty( DIProperty::newFromUserLabel( $printRequest->getCanonicalLabel() ) );
 		$propTypeid = $property->findPropertyValueType();
 
+		$where = trim($qobj->where);
+
+		$where = preg_replace('/\s*LIMIT\s+\d+\s*/i', '', $where);
+
+		while (preg_match('/^\((.*)\)$/s', $where, $matches)) {
+			$where = trim($matches[1]);
+		}
+		$where = trim($where);
+		if ($where) {
+			$where = '(' . $where . ')';
+		}
+
+
 		if ( $isCategory ) {
+			$sql_options = ' LIMIT 1';
 
-			// data-length without the GROUP BY clause
-			$sql_options = [ 'LIMIT' => 1 ];
+			$query = 'SELECT COUNT(*) as count' .
+					 ' FROM ' . "$qobj->joinTable AS $qobj->alias" . $qobj->from .
+					 ' JOIN ' . $this->connection->tableName( 'smw_fpt_inst' ) . " AS insts ON $qobj->alias.smw_id = insts.s_id" .
+					 ( $where ? ' WHERE ' . $where : '' ) .
+					 $sql_options;
 
-			$dataLength = (int)$this->connection->selectField(
-				$this->connection->tableName( $qobj->joinTable ) . " AS $qobj->alias" . $qobj->from
-					. ' JOIN ' . $this->connection->tableName( 'smw_fpt_inst' ) . " AS insts ON $qobj->alias.smw_id = insts.s_id",
-				"COUNT(*) AS count",
-				$qobj->where,
-				__METHOD__,
-				$sql_options
+			$res = $this->connection->query(
+				$query,
+				__METHOD__
 			);
-
+			$row = $res->fetchRow();
+			$dataLength = (int)( $row['count'] ?? 0 );
 			if ( !$dataLength ) {
 				return [];
 			}
 
 			$groupBy = "i.smw_id";
 			$orderBy = "count DESC, $groupBy ASC";
-			$sql_options = [
-				'GROUP BY' => $groupBy,
-				// $this->query->getOption( 'count' ),
-				'LIMIT' => $dataLength,
-				'ORDER BY' => $orderBy,
-				'HAVING' => 'count >= ' . $searchPanesOptions['minCount']
-			];
+			$sql_options =
+				' GROUP BY ' . $groupBy .
+				' HAVING ' . 'count >= ' . $searchPanesOptions['minCount'] .
+				' ORDER BY ' . $orderBy .
+				' LIMIT ' . $dataLength;
 
-			/*
-			SELECT COUNT(i.smw_id), i.smw_id, i.smw_title FROM `smw_object_ids` AS t0
-			JOIN `smw_fpt_inst` AS t1 ON t0.smw_id=t1.s_id
-			JOIN `smw_fpt_inst` AS insts ON t0.smw_id=insts.s_id
-			JOIN `smw_object_ids` AS i ON i.smw_id = insts.o_id
-			WHERE (t1.o_id=1077)
-			GROUP BY i.smw_id
-			HAVING COUNT(i.smw_id) >= 1 ORDER BY COUNT(i.smw_id) DESC
-			*/
+			$query = "SELECT COUNT($groupBy) AS count, i.smw_id, i.smw_title, i.smw_namespace, i.smw_iw, i.smw_sort, i.smw_subobject" .
+					 ' FROM ' . "$qobj->joinTable AS $qobj->alias" . $qobj->from .
+					 ' JOIN ' . $this->connection->tableName( 'smw_fpt_inst' ) . " AS insts ON $qobj->alias.smw_id = insts.s_id" .
+					 ' JOIN ' . $this->connection->tableName( SQLStore::ID_TABLE ) . " AS i ON i.smw_id = insts.o_id" .
+					 ( $where ? ' WHERE ' . $where : '' ) .
+					 $sql_options;
 
-			$res = $this->connection->select(
-				$this->connection->tableName( $qobj->joinTable ) . " AS $qobj->alias" . $qobj->from
-					// @see https://github.com/SemanticMediaWiki/SemanticDrilldown/blob/master/includes/Sql/SqlProvider.php
-					. ' JOIN ' . $this->connection->tableName( 'smw_fpt_inst' ) . " AS insts ON $qobj->alias.smw_id = insts.s_id"
-					. ' JOIN ' . $this->connection->tableName( SQLStore::ID_TABLE ) . " AS i ON i.smw_id = insts.o_id",
-				"COUNT($groupBy) AS count, i.smw_id, i.smw_title, i.smw_namespace, i.smw_iw, i.smw_sort, i.smw_subobject",
-				$qobj->where,
-				__METHOD__,
-				$sql_options
+			$res = $this->connection->query(
+				$query,
+				__METHOD__
 			);
 
 			$isIdField = true;
-
 		} else {
 			$tableid = $this->datatables->store->findPropertyTableID( $property );
-
 			$querySegmentList = array_reverse( $querySegmentList );
 
-			// get aliases
+			$entityIdManager = $this->datatables->store->getObjectIds();
+			$pid = $entityIdManager->getSMWPropertyID( $property );
+
 			$p_alias = null;
 			foreach ( $querySegmentList as $segment ) {
 				if ( $segment->joinTable === $tableid ) {
-					$p_alias = $segment->alias;
-					break;
+					if ( isset( $segment->where ) && $segment->where !== '' ) {
+						$pattern = '/' . preg_quote( $segment->alias, '/' ) . '\.p_id\s*=\s*' . preg_quote( (string)$pid, '/' ) . '/';
+						if ( preg_match( $pattern, $segment->where ) ) {
+							$p_alias = $segment->alias;
+							break;
+						}
+					} else {
+						if ( $p_alias === null ) {
+							 $p_alias = $segment->alias;
+						}
+					}
 				}
 			}
 
@@ -198,305 +194,241 @@ class SearchPanes {
 				$this->searchPanesLog[] = [
 					'canonicalLabel' => $printRequest->getCanonicalLabel(),
 					'error' => '$p_alias is null',
+					'tableid' => $tableid,
+					'expected_pid' => $pid,
 				];
 				return [];
 			}
 
-			// data-length without the GROUP BY clause
-			$sql_options = [ 'LIMIT' => 1 ];
 
-			// SELECT COUNT(*) as count FROM `smw_object_ids` AS t0
-			// INNER JOIN (`smw_fpt_mdat` AS t2 INNER JOIN `smw_di_wikipage` AS t3 ON t2.s_id=t3.s_id) ON t0.smw_id=t2.s_id
-			// WHERE ((t3.p_id=517)) LIMIT 500
+			$sql_options = ' LIMIT 1';
 
-			$dataLength = (int)$this->connection->selectField(
-				$this->connection->tableName( $qobj->joinTable ) . " AS $qobj->alias" . $qobj->from,
-				"COUNT(*) as count",
-				$qobj->where,
-				__METHOD__,
-				$sql_options
+			$query = 'SELECT COUNT(*) as count' .
+					 ' FROM ' . "$qobj->joinTable AS $qobj->alias" . $qobj->from .
+					 ( $where ? ' WHERE ' . $where : '' ) .
+					 $sql_options;
+
+
+			$res = $this->connection->query(
+				$query,
+				__METHOD__
 			);
+			$row = $res->fetchRow();
+			$dataLength = (int)( $row['count'] ?? 0 );
 
 			if ( !$dataLength ) {
 				return [];
 			}
 
-			[ $diType, $isIdField, $fields, $groupBy, $orderBy ] = $this->fetchValuesByGroup( $property, $p_alias, $propTypeid );
+			list( $diType, $isIdField, $fields, $groupBy, $orderBy ) = $this->fetchValuesByGroup( $property, $p_alias, $propTypeid );
 
-			/*
-			---GENERATED FROM DATATABLES
-			SELECT t0.smw_id,t0.smw_title,t0.smw_namespace,t0.smw_iw,t0.smw_subobject,t0.smw_hash,t0.smw_sort,COUNT( t3.o_id ) as count FROM `smw_object_ids` AS t0 INNER JOIN (`smw_fpt_mdat` AS t2 INNER JOIN `smw_di_wikipage` AS t3 ON t2.s_id=t3.s_id <<and t3.s_id = smw_object_ids.smw_id>> ) ON t0.smw_id=t2.s_id  WHERE ((t3.p_id=517)) GROUP BY t3.o_id, t0.smw_id HAVING count >= 1 ORDER BY count DESC, t0.smw_sort ASC LIMIT 500
+			$sql_options =
+				' GROUP BY ' . $groupBy .
+				' HAVING ' . 'count >= ' . $searchPanesOptions['minCount'] .
+				' ORDER BY ' . $orderBy .
+				' LIMIT ' . $dataLength;
 
-			---GENERATED ByGroupPropertyValuesLookup
-			SELECT i.smw_id,i.smw_title,i.smw_namespace,i.smw_iw,i.smw_subobject,i.smw_hash,i.smw_sort,COUNT( p.o_id ) as count FROM `smw_object_ids` `o` INNER JOIN `smw_di_wikipage` `p` ON ((p.s_id=o.smw_id)) JOIN `smw_object_ids` `i` ON ((p.o_id=i.smw_id)) WHERE o.smw_hash IN ('1_-_A','1_-_Ab','1_-_Abc','10_-_Abcd','11_-_Abc') AND (o.smw_iw!=':smw') AND (o.smw_iw!=':smw-delete') AND p.p_id = 517 GROUP BY p.o_id, i.smw_id ORDER BY count DESC, i.smw_sort ASC
-			*/
+			$query = 'SELECT ' . implode( ',', $fields ) .
+					 ' FROM ' . "$qobj->joinTable AS $qobj->alias" . $qobj->from .
+					 ( !$isIdField ? '' : " JOIN " . $this->connection->tableName( SQLStore::ID_TABLE ) . " AS `i` ON ($p_alias.o_id = i.smw_id)" ) .
+					 ( $where ? ' WHERE ' . $where . ( !$isIdField ? '' : ' AND' .
+					 ' i.smw_iw!=' . $this->connection->addQuotes( SMW_SQL3_SMWIW_OUTDATED ) .
+					 ' AND i.smw_iw!=' . $this->connection->addQuotes( SMW_SQL3_SMWDELETEIW ) ) : '' ) .
+					 $sql_options;
 
-			$sql_options = [
-				'GROUP BY' => $groupBy,
-				// the following implies that if the user sets a threshold
-				// close or equal to 1, and there are too many unique values,
-				// the page will break, however the user has responsibility
-				// for using searchPanes only for data reasonably grouped
-				'LIMIT' => $dataLength,
-				'ORDER BY' => $orderBy,
-				'HAVING' => 'count >= ' . $searchPanesOptions['minCount']
-			];
 
-			// @see QueryEngine
-			$res = $this->connection->select(
-				 $this->connection->tableName( $qobj->joinTable ) . " AS $qobj->alias" . $qobj->from
-				. ( !$isIdField ? ''
-					: " JOIN " . $this->connection->tableName( SQLStore::ID_TABLE ) . " AS `i` ON ($p_alias.o_id = i.smw_id)" ),
-				implode( ',', $fields ),
-				$qobj->where . ( !$isIdField ? '' : ( !empty( $qobj->where ) ? ' AND' : '' )
-					. ' i.smw_iw!=' . $this->connection->addQuotes( SMW_SQL3_SMWIW_OUTDATED )
-					. ' AND i.smw_iw!=' . $this->connection->addQuotes( SMW_SQL3_SMWDELETEIW ) ),
-				__METHOD__,
-				$sql_options
+			$res = $this->connection->query(
+				$query,
+				__METHOD__
 			);
-
 		}
 
-		// verify uniqueRatio
+		$diTypeForHandler = $isIdField ? DataItem::TYPE_WIKIPAGE : $diType;
+		$diHandler = $this->datatables->store->getDataItemHandlerForDIType( $diTypeForHandler );
 
-		// @see https://datatables.net/extensions/searchpanes/examples/initialisation/threshold.htm
-		// @see https://github.com/DataTables/SearchPanes/blob/818900b75dba6238bf4b62a204fdd41a9b8944b7/src/SearchPane.ts#L824
+		$groups = [];
+
+		$outputMode = SMW_OUTPUT_HTML;
+		$isSubject = false;
 
 		$threshold = !empty( $searchPanesParameterOptions['threshold'] ) ?
 			$searchPanesParameterOptions['threshold'] : $searchPanesOptions['threshold'];
 
-		$outputFormat = $printRequest->getOutputFormat();
+		$this->searchPanesLog[] = [
+			'canonicalLabel' => $printRequest->getCanonicalLabel(),
+			'threshold' => $threshold,
+            'dataLength' => $dataLength ?? 'N/A',
+		];
 
-		// *** if outputFormat is not set we can compute
-		// uniqueness ratio by now, otherwise we have to
-		// perform it after grouping the actual data
-		if ( !$outputFormat ) {
-			$binLength = $res->numRows();
-			$uniqueRatio = $binLength / $dataLength;
 
-			$this->searchPanesLog[] = [
-				'canonicalLabel' => $printRequest->getCanonicalLabel(),
-				'dataLength' => $dataLength,
-				'binLength' => $binLength,
-				'uniqueRatio' => $uniqueRatio,
-				'threshold' => $threshold,
-				'grouped' => false,
-			];
+		$propTypeId = $isIdField ? '_wpg' : $propTypeid;
 
-			// || $binLength <= 1
-			if ( $uniqueRatio > $threshold ) {
-				return [];
-			}
-		}
-
-		// @see ByGroupPropertyValuesLookup
-		$diType = DataTypeRegistry::getInstance()->getDataItemByType(
-			$propTypeid
-		);
-
-		$diHandler = $this->datatables->store->getDataItemHandlerForDIType(
-			$diType
-		);
-
-		$fields = $diHandler->getFetchFields();
-
-		$deepRedirectTargetResolver = ApplicationFactory::getInstance()
-			->newMwCollaboratorFactory()->newDeepRedirectTargetResolver();
-
-		$outputMode = SMW_OUTPUT_HTML;
-		$isSubject = false;
-		$groups = [];
 		foreach ( $res as $row ) {
+			try {
+                if ( $isIdField ) {
+                    $dataItem = $diHandler->dataItemFromDBKeys( [
+                        $row->smw_title,
+                        intval( $row->smw_namespace ),
+                        $row->smw_iw,
+                        '',
+                        $row->smw_subobject
+                    ] );
+                } else {
+                    $dbkeys = [];
+                    $expectedFields = $diHandler->getFetchFields();
 
-			if ( $isIdField ) {
-				$dbKeys = [
-					$row->smw_title,
-					$row->smw_namespace,
-					$row->smw_iw,
-					$row->smw_sort,
-					$row->smw_subobject
-				];
+                    foreach ( $expectedFields as $field => $type ) {
+                        if ( property_exists( $row, $field ) ) {
+                            if ( $row->$field === null || $row->$field === '' ) {
+                                if ( strpos( $field, 'sortkey' ) !== false || strpos( $field, 'serialized' ) !== false ) {
+                                    $dbkeys[] = '0';
+                                } else {
+                                    $dbkeys[] = '';
+                                }
+                            } else {
+                                $dbkeys[] = $row->$field;
+                            }
+                        } else {
+                            if ( strpos( $field, 'sortkey' ) !== false || strpos( $field, 'serialized' ) !== false ) {
+                                $dbkeys[] = '0';
+                            } else {
+                                $dbkeys[] = '';
+                            }
+                        }
+                    }
 
-			} else {
-				$dbKeys = [];
-				foreach ( $fields as $field => $fieldType ) {
-					$dbKeys[] = $row->$field;
-				}
-			}
+                    $finalDbKeys = count( $dbkeys ) > 1 ? $dbkeys : ( !empty( $dbkeys ) ? $dbkeys[0] : '' );
 
-			$dbKeys = count( $dbKeys ) > 1 ? $dbKeys : $dbKeys[0];
+                    $dataItem = $diHandler->dataItemFromDBKeys( $finalDbKeys );
+                }
 
-			$dataItem = $diHandler->dataItemFromDBKeys(
-				$dbKeys
-			);
+                $dataValue = DataValueFactory::getInstance()->newDataValueByItem(
+                    $dataItem,
+                    $property
+                );
 
-			// try to resolve redirect
-			if ( $isIdField && $row->smw_iw === SMW_SQL3_SMWREDIIW ) {
-				$redirectTarget = null;
-				// @see SMWExportController
-				try {
-					$redirectTarget = $deepRedirectTargetResolver->findRedirectTargetFor( $dataItem->getTitle() );
-				} catch ( \Exception $e ) {
-				}
-				if ( $redirectTarget ) {
-					$dataItem = DIWikiPage::newFromTitle( $redirectTarget );
-				}
-			}
+                if ( $printRequest->getOutputFormat() ) {
+                    $dataValue->setOutputFormat( $printRequest->getOutputFormat() );
+                }
 
-			$dataValue = DataValueFactory::getInstance()->newDataValueByItem(
-				$dataItem,
-				$property
-			);
+                $cellContentArray = $this->datatables->getCellContent(
+                    $printRequest->getCanonicalLabel(),
+                    [ $dataValue ],
+                    $outputMode,
+                    $isSubject
+                );
+                $cellContent = $cellContentArray['display'] ?? '';
 
-			if ( $outputFormat ) {
-				$dataValue->setOutputFormat( $outputFormat );
-			}
+                if ( !array_key_exists( $cellContent, $groups ) ) {
+                    $groups[$cellContent] = [
+                        'count' => 0,
+                        'value' => $dataValue->getWikiValue(),
+                        'minDate' => null,
+                        'maxDate' => null
+                    ];
+                }
 
-/*
+                $groups[$cellContent]['count'] += (int)($row->count ?? 1);
 
+                $value = $dataValue->getWikiValue();
 
-					//  @see DIBlobHandler
-					// $isKeyword = $dataItem->getOption( 'is.keyword' );
+                switch ( $dataItem->getDiType() ) {
+                    case DataItem::TYPE_NUMBER:
+                        if ( $outputFormat === '-u' ) {
+                            $value = '*';
+                        } else {
+                            $value = $dataValue->getNumber();
+                        }
+                        break;
+                    case DataItem::TYPE_BLOB:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                    case DataItem::TYPE_BOOLEAN:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                    case DataItem::TYPE_URI:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                    case DataItem::TYPE_TIME:
+                        $currentDate = $dataItem->asDateTime()->getTimestamp();
+                        $value = $dataValue->getISO8601Date();
+                        if ( $currentDate < $groups[$cellContent]['minDate'] ) {
+                            $groups[$cellContent]['minDate'] = $currentDate;
+                        }
+                        if ( $currentDate > $groups[$cellContent]['maxDate'] ) {
+                            $groups[$cellContent]['maxDate'] = $currentDate;
+                        }
+                        break;
+                    case DataItem::TYPE_GEO:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                    case DataItem::TYPE_CONTAINER:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                    case DataItem::TYPE_WIKIPAGE:
+                        $title_ = $dataValue->getTitle();
+                        if ( $title_ ) {
+                            $value = $title_->getFullText();
+                        } else {
+                            $value = $dataValue->getWikiValue();
+                            $this->searchPanesLog[] = [
+                                'canonicalLabel' => $printRequest->getCanonicalLabel(),
+                                'error' => 'TYPE_WIKIPAGE title is null',
+                                'wikiValue' => $value,
+                            ];
+                        }
+                        break;
+                    case DataItem::TYPE_CONCEPT:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                    case DataItem::TYPE_PROPERTY:
+                        break;
+                    case DataItem::TYPE_NOTYPE:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                    default:
+                        $value = $dataValue->getWikiValue();
+                        break;
+                }
 
-					if ( $propTypeid === '_keyw' ) {
-						$value = $dataItem->normalize( $value );
-					}
+                $groups[$cellContent]['value'] = $value;
 
-			*/
-			$cellContent = $this->datatables->getCellContent(
-				$printRequest->getCanonicalLabel(),
-				[ $dataValue ],
-				$outputMode,
-				$isSubject,
-				$propTypeid
-			)['display'];
-
-			if ( !array_key_exists( $cellContent, $groups ) ) {
-				$groups[$cellContent] = [ 'count' => 0, 'value' => '' ];
-
-				if ( $dataItem->getDiType() === DataItem::TYPE_TIME ) {
-					// max Unix time
-					$groups[$cellContent]['minDate'] = 2147483647;
-					$groups[$cellContent]['maxDate'] = 0;
-				}
-			}
-
-			$groups[$cellContent]['count'] += $row->count;
-
-			// @TODO complete with all the possible transformations of
-			// datavalues (DataValues/ValueFormatters)
-			// based on $printRequest->getOutputFormat()
-			// and provide to the API the information to
-			// rebuild the query when values are grouped
-			// by the output of the printout format, e.g.
-			// if grouped by unit (for number datatype)
-			// value should be *, for datetime see the
-			// method below
-
-			switch ( $dataItem->getDiType() ) {
-				case DataItem::TYPE_NUMBER:
-					if ( $outputFormat === '-u' ) {
-						$value = '*';
-					} else {
-						$value = $dataValue->getNumber();
-					}
-					break;
-
-				case DataItem::TYPE_BLOB:
-					// @see IntlNumberFormatter
-					// $requestedLength = intval( $outputFormat );
-					$value = $dataValue->getWikiValue();
-					break;
-
-				case DataItem::TYPE_BOOLEAN:
-					$value = $dataValue->getWikiValue();
-					break;
-
-				case DataItem::TYPE_URI:
-					$value = $dataValue->getWikiValue();
-					break;
-
-				case DataItem::TYPE_TIME:
-					$currentDate = $dataItem->asDateTime()->getTimestamp();
-					$value = $dataValue->getISO8601Date();
-					if ( $currentDate < $groups[$cellContent]['minDate'] ) {
-						$groups[$cellContent]['minDate'] = $currentDate;
-					}
-					if ( $currentDate > $groups[$cellContent]['maxDate'] ) {
-						$groups[$cellContent]['maxDate'] = $currentDate;
-					}
-					break;
-
-				case DataItem::TYPE_GEO:
-					$value = $dataValue->getWikiValue();
-					break;
-
-				case DataItem::TYPE_CONTAINER:
-					$value = $dataValue->getWikiValue();
-					break;
-
-				case DataItem::TYPE_WIKIPAGE:
-					$title_ = $dataValue->getTitle();
-					if ( $title_ ) {
-						$value = $title_->getFullText();
-					} else {
-						$value = $dataValue->getWikiValue();
-						$this->searchPanesLog[] = [
-							'canonicalLabel' => $printRequest->getCanonicalLabel(),
-							'error' => 'TYPE_WIKIPAGE title is null',
-							'wikiValue' => $value,
-						];
-					}
-					break;
-
-				case DataItem::TYPE_CONCEPT:
-					$value = $dataValue->getWikiValue();
-					break;
-
-				case DataItem::TYPE_PROPERTY:
-					break;
-				case DataItem::TYPE_NOTYPE:
-					$value = $dataValue->getWikiValue();
-					break;
-
-				default:
-					$value = $dataValue->getWikiValue();
-
-			}
-
-			$groups[$cellContent]['value'] = $value;
-		}
-
-		if ( $outputFormat ) {
-			$binLength = count( $groups );
-			$uniqueRatio = $binLength / $dataLength;
-
-			$this->searchPanesLog[] = [
-				'canonicalLabel' => $printRequest->getCanonicalLabel(),
-				'dataLength' => $dataLength,
-				'binLength' => $binLength,
-				'uniqueRatio' => $uniqueRatio,
-				'threshold' => $threshold,
-				'grouped' => true,
-			];
-
-			// || $binLength <= 1
-			if ( $uniqueRatio > $threshold ) {
-				return [];
-			}
-
+                if ( $propTypeId === '_dat' ) {
+                    $dataValue->setOutputFormat( 'raw' );
+                    $rawValue = $dataValue->getWikiValue();
+                    if ( strpos( $rawValue, '/' ) !== false ) {
+                        $rawValue = explode( '/', $rawValue )[0];
+                    }
+                    $rawValue = explode( ' ', $rawValue )[0];
+                    $ts = strtotime( $rawValue );
+                    if ( $ts !== false ) {
+                        if ( $groups[$cellContent]['minDate'] === null || $ts < $groups[$cellContent]['minDate'] ) {
+                            $groups[$cellContent]['minDate'] = $ts;
+                        }
+                        if ( $groups[$cellContent]['maxDate'] === null || $ts > $groups[$cellContent]['maxDate'] ) {
+                            $groups[$cellContent]['maxDate'] = $ts;
+                        }
+                    }
+                }
+            } catch ( \SMW\SQLStore\EntityStore\Exception\DataItemHandlerException $e ) {
+                error_log( 'SearchPanes DataItemHandlerException for ' . $printRequest->getCanonicalLabel() . ': ' . $e->getMessage() .
+                           '. Row data: ' . json_encode( $row, JSON_UNESCAPED_UNICODE ) .
+                           '. Constructed dbKeys: ' . json_encode( $finalDbKeys ?? $dbkeys ?? 'N/A', JSON_UNESCAPED_UNICODE )
+                );
+                continue;
+            } catch ( \Exception $e ) {
+                error_log( 'SearchPanes Unexpected Exception for ' . $printRequest->getCanonicalLabel() . ': ' . $e->getMessage() .
+                           '. Row data: ' . json_encode( $row, JSON_UNESCAPED_UNICODE )
+                );
+                continue;
+            }
 		}
 
 		arsort( $groups, SORT_NUMERIC );
 
 		$ret = [];
 		foreach ( $groups as $content => $value ) {
-
-			// @see https://www.semantic-mediawiki.org/wiki/Help:Search_operators
-			// the latest value is returned, with the largest range
-			if ( array_key_exists( 'minDate', $value ) && $value['minDate'] != $value['maxDate'] ) {
-				// ISO 8601
-				// @TODO use a symbol instead and transform from the API
+			if ( array_key_exists( 'minDate', $value ) && $value['minDate'] !== null && $value['maxDate'] !== null && $value['minDate'] != $value['maxDate'] ) {
 				$value['value'] = '>' . date( 'c', $value['minDate'] ) . ']][[' . $printRequest->getCanonicalLabel() . '::<' . date( 'c', $value['maxDate'] );
 			}
 
@@ -515,11 +447,9 @@ class SearchPanes {
 	 */
 	private function fetchValuesByGroup( DIProperty $property, string $p_alias, string $propTypeId ): array {
 		$tableid = $this->datatables->store->findPropertyTableID( $property );
-		// $entityIdManager = $this->store->getObjectIds();
 
 		$proptables = $this->datatables->store->getPropertyTables();
 
-		// || $subjects === []
 		if ( $tableid === '' || !isset( $proptables[$tableid] ) ) {
 			return [];
 		}
@@ -568,7 +498,6 @@ class SearchPanes {
 		} elseif ( $diType === DataItem::TYPE_BLOB ) {
 			$fields = [ "$p_alias.o_hash, $p_alias.o_blob", "COUNT( $p_alias.o_hash ) as count" ];
 
-			// @see DIBlobHandler
 			$groupBy = ( $propTypeId !== '_keyw' ? "$p_alias.o_hash, $p_alias.o_blob"
 					: "$p_alias.o_hash" );
 
@@ -583,16 +512,10 @@ class SearchPanes {
 			$fields = [ "$groupBy", "COUNT( $groupBy ) as count" ];
 		}
 
-		// if ( !$propTable->isFixedPropertyTable() ) {
-		// 	$pid = $entityIdManager->getSMWPropertyID( $property );
-		// }
-
 		return [ $diType, $isIdField, $fields, $groupBy, $orderBy ];
 	}
 
 	private function searchPanesMainlabel( PrintRequest $printRequest, array $searchPanesOptions, array $searchPanesParameterOptions ): array {
-		// mainlabel consists only of unique values,
-		// so do not display if settings don't allow that
 		if ( $searchPanesOptions['minCount'] > 1 ) {
 			return [];
 		}
@@ -605,9 +528,6 @@ class SearchPanes {
 			'threshold' => $threshold,
 		];
 
-		if ( $threshold < 1 ) {
-			return [];
-		}
 
 		$query = $this->datatables->query;
 		$queryDescription = $query->getDescription();
@@ -623,37 +543,28 @@ class SearchPanes {
 
 		$querySegmentListProcessor->setQuerySegmentList( $querySegmentList );
 
-		// execute query tree, resolve all dependencies
 		$querySegmentListProcessor->process( $rootid );
 
 		$qobj = $querySegmentList[$rootid];
 
-		$sql_options = [
-			// *** should we set a limit here ?
-			// it makes sense to show the pane for
-			// mainlabel only when page titles are grouped
-			// through the printout format or even the printout template
-			// title
-			'ORDER BY' => 't'
-		];
+		$sql_options =
+			' ORDER BY t';
 
-		// Selecting those is required in standard SQL (but MySQL does not require it).
 		$sortfields = implode( ',', $qobj->sortfields );
 		$sortfields = $sortfields ? ',' . $sortfields : '';
 
-		// @see QueryEngine
-		$res = $this->connection->select(
-			$this->connection->tableName( $qobj->joinTable ) . " AS $qobj->alias" . $qobj->from,
-			"$qobj->alias.smw_id AS id," .
+		$res = $this->connection->query(
+			"SELECT $qobj->alias.smw_id AS id," .
 			"$qobj->alias.smw_title AS t," .
 			"$qobj->alias.smw_namespace AS ns," .
 			"$qobj->alias.smw_iw AS iw," .
 			"$qobj->alias.smw_subobject AS so," .
 			"$qobj->alias.smw_sortkey AS sortkey" .
-			"$sortfields",
-			$qobj->where,
-			__METHOD__,
-			$sql_options
+			"$sortfields" .
+			' FROM ' . "$qobj->joinTable AS $qobj->alias" . $qobj->from .
+			$qobj->where .
+			$sql_options,
+			__METHOD__
 		);
 
 		$diHandler = $this->datatables->store->getDataItemHandlerForDIType(
