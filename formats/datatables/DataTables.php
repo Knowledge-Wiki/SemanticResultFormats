@@ -648,6 +648,7 @@ class DataTables extends ResultPrinter {
 			$context = RequestContext::getMain();
 			$languageCode = $context->getLanguage()->getCode();
 		}
+
 		$languageCode = strtolower( $languageCode );
 
 		$basePath = __DIR__ . "/i18n/";
@@ -657,29 +658,35 @@ class DataTables extends ResultPrinter {
 		$candidates[] = "{$languageCode}.json";
 
 		// 2. en-gb → en fallback
-		if ( strpos( $languageCode, '-' ) !== false ) {
+		if ( str_contains( $languageCode, '-' ) ) {
 			[ $base ] = explode( '-', $languageCode, 2 );
 			$candidates[] = "{$base}.json";
 
-		// 3. en → en-* best effort (variant lookup)
+		// 3. en → en-* best effort
 		} else {
-			$pattern = $basePath . "{$languageCode}-*.json";
-			$matches = glob( $pattern );
+			$matches = glob( $basePath . "{$languageCode}-*.json" );
 
 			if ( !empty( $matches ) ) {
-				// sort for deterministic behavior
 				sort( $matches );
+
 				foreach ( $matches as $match ) {
 					$candidates[] = basename( $match );
 				}
 			}
 		}
 
-		// try candidates in order
-		foreach ( $candidates as $file ) {
-			$path = $basePath . $file;
+		// single scan cache for case-insensitive lookup
+		$allFiles = glob($basePath . '*') ?: [];
+		$index = [];
 
-			if ( !is_readable( $path ) ) {
+		foreach ( $allFiles as $file ) {
+			$index[strtolower( basename( $file ) )] = $file;
+		}
+
+		foreach ( $candidates as $file ) {
+			$path = $index[strtolower( $file )] ?? null;
+
+			if ( !$path || !is_readable( $path ) ) {
 				continue;
 			}
 
@@ -690,7 +697,6 @@ class DataTables extends ResultPrinter {
 
 			try {
 				return json_decode( $json, true, 512, JSON_THROW_ON_ERROR );
-
 			} catch ( Throwable $e ) {
 				return null;
 			}
