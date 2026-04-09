@@ -646,8 +646,6 @@ class DataTables extends ResultPrinter {
 	 * - en → en-GB (variant lookup)
 	 * - en-GB → en (fallback)
 	 *
-	 * File resolution is case-insensitive and safely decodes JSON.
-	 *
 	 * @param string|null $languageCode Language code or null for request default
 	 * @return array|null Decoded JSON language data, or null if no valid file is found
 	 */
