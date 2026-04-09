@@ -625,11 +625,78 @@ class DataTables extends ResultPrinter {
 			'searchPanes' => $searchPanesData,
 			'searchPanesLog' => $searchPanesLog,
 			'formattedOptions' => $formattedOptions,
-			'printoutsParametersOptions' => $this->printoutsParametersOptions
+			'printoutsParametersOptions' => $this->printoutsParametersOptions,
+			'language' => $this->retrieveLanguage()
 		];
 
 		return $this->printContainer( $data, $headerList, $datatablesOptions,
 			$printrequests, $printouts );
+	}
+
+	/**
+	 * Retrieves language file with fallback support.
+	 *
+	 * Supports both directions:
+	 * - en → en-GB (variant lookup)
+	 * - en-GB → en (fallback)
+	 *
+	 * @param string|null $languageCode Language code or null for request default
+	 * @return array|null Decoded JSON language data
+	 */
+	private function retrieveLanguage( ?string $languageCode = null ) {
+		if ( !$languageCode ) {
+			$context = RequestContext::getMain();
+			$languageCode = $context->getLanguage()->getCode();
+		}
+		$languageCode = strtolower( $languageCode );
+
+		$basePath = __DIR__ . "/i18n/";
+		$candidates = [];
+
+		// 1. exact match first
+		$candidates[] = "{$languageCode}.json";
+
+		// 2. en-gb → en fallback
+		if ( strpos( $languageCode, '-' ) !== false ) {
+			[ $base ] = explode( '-', $languageCode, 2 );
+			$candidates[] = "{$base}.json";
+
+		// 3. en → en-* best effort (variant lookup)
+		} else {
+			$pattern = $basePath . "{$languageCode}-*.json";
+			$matches = glob( $pattern );
+
+			if ( !empty( $matches ) ) {
+				// sort for deterministic behavior
+				sort( $matches );
+				foreach ( $matches as $match ) {
+					$candidates[] = basename( $match );
+				}
+			}
+		}
+
+		// try candidates in order
+		foreach ( $candidates as $file ) {
+			$path = $basePath . $file;
+
+			if ( !is_readable( $path ) ) {
+				continue;
+			}
+
+			$json = file_get_contents( $path );
+			if ( $json === false ) {
+				continue;
+			}
+
+			try {
+				return json_decode( $json, true, 512, JSON_THROW_ON_ERROR );
+
+			} catch ( Throwable $e ) {
+				return null;
+			}
+		}
+
+		return null;
 	}
 
 	private function printContainer(
