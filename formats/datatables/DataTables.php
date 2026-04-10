@@ -634,17 +634,12 @@ class DataTables extends ResultPrinter {
 	}
 
 	/**
-	 * Retrieves a language JSON file with fallback support.
+	 * Retrieves a language JSON file with simple fallback support.
 	 *
 	 * Resolution strategy:
-	 * 1. Exact match (e.g. en-GB.json)
-	 * 2. Base fallback (e.g. en-GB → en.json)
-	 * 3. Variant expansion (e.g. en → en-*, first match by sorted order)
-	 * 4. Case-insensitive filesystem fallback scan
-	 *
-	 * Supports both directions:
-	 * - en → en-GB (variant lookup)
-	 * - en-GB → en (fallback)
+	 * 1. Exact match (e.g. de-AT.json)
+	 * 2. Prefix match (e.g. de*.json, first match in sorted order)
+	 * 3. Case-insensitive fallback (exact and prefix)
 	 *
 	 * @param string|null $languageCode Language code or null for request default
 	 * @return array|null Decoded JSON language data, or null if no valid file is found
@@ -656,9 +651,7 @@ class DataTables extends ResultPrinter {
 		}
 
 		$languageCode = strtolower( $languageCode );
-
 		$basePath = __DIR__ . "/i18n/";
-		$candidates = [];
 
 		$loadJson = static function ( string $path ) {
 			if ( !is_readable( $path ) ) {
@@ -677,35 +670,30 @@ class DataTables extends ResultPrinter {
 			}
 		};
 
-		// 1. exact match first
-		$candidates[] = "{$languageCode}.json";
-
-		// 2. en-gb → en fallback
+		$prefix = $languageCode;
 		if ( str_contains( $languageCode, '-' ) ) {
-			[ $base ] = explode( '-', $languageCode, 2 );
-			$candidates[] = "{$base}.json";
-
-		// 3. en → en-* best effort
-		} else {
-			$matches = glob( $basePath . "{$languageCode}-*.json" ) ?: [];
-			sort( $matches );
-
-			foreach ( $matches as $match ) {
-				$candidates[] = basename( $match );
-			}
+			$prefix = explode( '-', $languageCode, 2 )[0];
 		}
 
-		// PASS 1: fast path
-		foreach ( $candidates as $file ) {
-			$path = $basePath . $file;
+		// PASS 1: exact match
+		$exactPath = $basePath . "{$languageCode}.json";
+		$result = $loadJson( $exactPath );
+		if ( $result !== null ) {
+			return $result;
+		}
 
+		// PASS 2: prefix glob case-sensitive
+		$matches = glob( $basePath . "{$prefix}*.json" ) ?: [];
+		sort( $matches );
+
+		foreach ( $matches as $path ) {
 			$result = $loadJson( $path );
 			if ( $result !== null ) {
 				return $result;
 			}
 		}
 
-		// PASS 2: indexed fallback scan (case-insensitive match)
+		// PASS 3: case-insensitive fallback
 		$allFiles = glob( $basePath . '*' ) ?: [];
 		$index = [];
 
@@ -713,16 +701,22 @@ class DataTables extends ResultPrinter {
 			$index[strtolower( basename( $file ) )] = $file;
 		}
 
-		foreach ( $candidates as $file ) {
-			$path = $index[strtolower( $file )] ?? null;
-
-			if ( $path === null ) {
-				continue;
-			}
-
+		// exact (case-insensitive)
+		$path = $index[strtolower( "{$languageCode}.json" )] ?? null;
+		if ( $path ) {
 			$result = $loadJson( $path );
 			if ( $result !== null ) {
 				return $result;
+			}
+		}
+
+		// prefix (case-insensitive)
+		foreach ( $index as $name => $path ) {
+			if ( str_starts_with( $name, $prefix ) ) {
+				$result = $loadJson( $path );
+				if ( $result !== null ) {
+					return $result;
+				}
 			}
 		}
 
