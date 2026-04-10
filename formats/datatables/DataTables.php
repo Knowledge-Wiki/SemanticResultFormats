@@ -660,7 +660,7 @@ class DataTables extends ResultPrinter {
 		$basePath = __DIR__ . "/i18n/";
 		$candidates = [];
 
-		$loadJson = function( string $path ) {
+		$loadJson = static function ( string $path ) {
 			if ( !is_readable( $path ) ) {
 				return null;
 			}
