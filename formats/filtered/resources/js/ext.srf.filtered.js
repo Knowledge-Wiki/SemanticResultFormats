@@ -2221,7 +2221,7 @@ function sliceEvents(props, allDay) {
     return internalCommon.sliceEventStore(props.eventStore, props.eventUiBases, props.dateProfile.activeRange, allDay ? props.nextDayThreshold : null).fg;
 }
 
-const version = '6.1.19';
+const version = '6.1.20';
 
 exports.JsonRequestError = internalCommon.JsonRequestError;
 exports.Calendar = Calendar;
@@ -30392,14 +30392,19 @@ class ValueFilter extends Filter_1.Filter {
         });
         return checkboxes;
     }
+    stripHtml(str) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = str;
+        return tmp.textContent || tmp.innerText || '';
+    }
     getSelected2Control() {
         let select = $('<select class="filtered-value-select" style="width: 100%;">');
         let data = [];
         // insert options (checkboxes and labels) and attach event handlers
         for (let value of this.values) {
             // Try to get label, if not fall back to value id
-            let label = value.formattedValue || value.printoutValue;
-            data.push({ id: value.printoutValue, text: label });
+            const label = value.formattedValue || value.printoutValue || '';
+            data.push({ id: value.printoutValue, text: this.stripHtml(label) });
         }
         mw.loader.using('ext.srf.filtered.value-filter.select').then(() => {
             select.select2({
@@ -30528,7 +30533,6 @@ class Filtered {
         this.attachViews(controller, this.target.find('div.filtered-views-container'));
         // lift-off
         controller.show();
-        console.log('run');
     }
     attachFilters(controller, filtersContainer) {
         for (let prId in this.config.printrequests) {
@@ -31077,7 +31081,6 @@ function initItems(cfg, root) {
         if (!el.length) {
             return;
         }
-        // Prevent double initialization
         if (el.data("filtered-init"))
             return;
         el.data("filtered-init", true);
@@ -31085,17 +31088,12 @@ function initItems(cfg, root) {
         f.run();
     });
 }
-// Initial run on page load
 initItems(config);
-// Handle deferred query results
 mw.hook("smw.deferred.query").add((container) => {
-    console.log("Deferred query container:", container);
-    // Reload config in case it changed
     const cfg = mw.config.get("srfFilteredConfig") || {};
     container.find(".filtered-spinner").hide();
     container.find(".filtered-views").show();
     container.find(".filtered-filters").show();
-    // Initialize only items inside the container
     initItems(cfg, container);
 });
 
