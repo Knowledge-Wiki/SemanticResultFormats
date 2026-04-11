@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\Html\Html;
 use SMW\Query\QueryResult;
 use SMW\Query\ResultPrinters\ResultPrinter;
 
@@ -140,7 +141,7 @@ class SRFjqPlotSeries extends ResultPrinter {
 	 *
 	 * @return array
 	 */
-	private function getFormatSettings( $data, $options ) {
+	private function getFormatSettings( $data, $options ): array {
 		// Init
 		$dataSet = [];
 		$options['mode'] = 'series';
@@ -372,7 +373,7 @@ class SRFjqPlotSeries extends ResultPrinter {
 	 *
 	 * @return array of IParamDefinition|array
 	 */
-	public function getParamDefinitions( array $definitions ) {
+	public function getParamDefinitions( array $definitions ): array {
 		$params = array_merge( parent::getParamDefinitions( $definitions ), SRFjqPlot::getCommonParams() );
 
 		$params['infotext'] = [
