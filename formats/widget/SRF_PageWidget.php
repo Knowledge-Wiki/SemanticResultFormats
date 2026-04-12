@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\Html\Html;
 use SMW\Query\QueryResult;
 use SMW\Query\ResultPrinters\EmbeddedResultPrinter;
 
@@ -32,7 +33,7 @@ class SRFPageWidget extends EmbeddedResultPrinter {
 	 *
 	 * @return string
 	 */
-	protected function getResultText( QueryResult $res, $outputMode ) {
+	protected function getResultText( QueryResult $res, $outputMode ): string {
 		// Initialize
 		static $statNr = 0;
 
@@ -82,7 +83,7 @@ class SRFPageWidget extends EmbeddedResultPrinter {
 	 *
 	 * @return array of IParamDefinition|array
 	 */
-	public function getParamDefinitions( array $definitions ) {
+	public function getParamDefinitions( array $definitions ): array {
 		$params = parent::getParamDefinitions( $definitions );
 
 		$params['embedformat'] = [

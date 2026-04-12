@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\Html\Html;
+
 /**
  * A query printer for bar, line, pie and donut chart on aggregated values
  * using the jqPlot JavaScript library.
@@ -232,7 +234,7 @@ class SRFjqPlotChart extends SRFjqPlot {
 	 *
 	 * @return array of IParamDefinition|array
 	 */
-	public function getParamDefinitions( array $definitions ) {
+	public function getParamDefinitions( array $definitions ): array {
 		$params = self::getCommonParams();
 
 		$params['charttype'] = [

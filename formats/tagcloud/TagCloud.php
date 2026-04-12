@@ -2,7 +2,8 @@
 
 namespace SRF;
 
-use Html;
+use MediaWiki\Html\Html;
+use MediaWiki\Title\Title;
 use SMW\Query\PrintRequest;
 use SMW\Query\QueryResult;
 use SMW\Query\Result\ResultArray;
@@ -10,7 +11,6 @@ use SMW\Query\ResultPrinters\ResultPrinter;
 use SMWDataValue;
 use SMWOutputs;
 use SRFUtils;
-use Title;
 
 /**
  * Result printer that prints query results as a tag cloud
@@ -366,7 +366,7 @@ class TagCloud extends ResultPrinter {
 	 *
 	 * @return array of IParamDefinition|array
 	 */
-	public function getParamDefinitions( array $definitions ) {
+	public function getParamDefinitions( array $definitions ): array {
 		$params = parent::getParamDefinitions( $definitions );
 
 		$params['template'] = [

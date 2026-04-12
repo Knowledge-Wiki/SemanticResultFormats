@@ -62,11 +62,12 @@ gulp.task('buildFilteredTests', function () {
 
 gulp.task('buildExternalJS', function () {
 	var config = {
-		'ext.srf.filtered.leaflet.js': [
-			'node_modules/leaflet/dist/leaflet-src.js',
-			'node_modules/leaflet.markercluster/dist/leaflet.markercluster-src.js',
-			'node_modules/leaflet-providers/leaflet-providers.js',
-		],
+		// @see https://github.com/SemanticMediaWiki/SemanticResultFormats/pull/976
+		// 'ext.srf.filtered.leaflet.js': [
+		// 	'node_modules/leaflet/dist/leaflet-src.js',
+		// 	'node_modules/leaflet.markercluster/dist/leaflet.markercluster-src.js',
+		// 	'node_modules/leaflet-providers/leaflet-providers.js',
+		// ],
 		'ext.srf.filtered.slider.js': [
 			'node_modules/ion-rangeslider/js/ion.rangeSlider.js',
 		],
@@ -74,7 +75,6 @@ gulp.task('buildExternalJS', function () {
 	};
 
 	var res = true;
-
 	for (var target in config) {
 		res =
 			res &&
