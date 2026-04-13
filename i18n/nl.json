@@ -234,7 +234,7 @@
 	"srf-ui-datatables-label-sInfoEmpty": "Weergave 0 van 0 resultaten",
 	"srf-ui-datatables-label-sInfoFiltered": "(gefilterd uit _MAX_ resultaten)",
 	"srf-ui-datatables-label-sInfoThousands": ".",
-	"srf-ui-datatables-label-sLengthMenu": "Toon _MENU_ resultaten per pagina",
+	"srf-ui-datatables-label-sLengthMenu": "_MENU_ resultaten weergeven",
 	"srf-ui-datatables-label-sLoadingRecords": "Bezig met laden...",
 	"srf-ui-datatables-label-sProcessing": "Verwerken...",
 	"srf-ui-datatables-label-sSearch": "Zoek:",
