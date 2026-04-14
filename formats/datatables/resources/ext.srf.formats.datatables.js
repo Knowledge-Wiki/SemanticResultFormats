@@ -758,7 +758,7 @@
 
 			var conf = $.extend(options, {
 				columnDefs: columnDefs,
-				language: _datatables.oLanguage,
+				language: data.language || _datatables.oLanguage,
 				order: order,
 				search: {
 					caseInsensitive: table.data('nocase'),

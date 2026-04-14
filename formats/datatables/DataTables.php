@@ -625,11 +625,102 @@ class DataTables extends ResultPrinter {
 			'searchPanes' => $searchPanesData,
 			'searchPanesLog' => $searchPanesLog,
 			'formattedOptions' => $formattedOptions,
-			'printoutsParametersOptions' => $this->printoutsParametersOptions
+			'printoutsParametersOptions' => $this->printoutsParametersOptions,
+			'language' => $this->retrieveLanguage()
 		];
 
 		return $this->printContainer( $data, $headerList, $datatablesOptions,
 			$printrequests, $printouts );
+	}
+
+	/**
+	 * Retrieves a language JSON file with simple fallback support.
+	 *
+	 * Resolution strategy:
+	 * 1. Exact match (e.g. de-AT.json)
+	 * 2. Prefix match (e.g. de*.json, first match in sorted order)
+	 * 3. Case-insensitive fallback (exact and prefix)
+	 *
+	 * @param string|null $languageCode Language code or null for request default
+	 * @return array|null Decoded JSON language data, or null if no valid file is found
+	 */
+	private function retrieveLanguage( ?string $languageCode = null ) {
+		if ( !$languageCode ) {
+			$context = RequestContext::getMain();
+			$languageCode = $context->getLanguage()->getCode();
+		}
+
+		$languageCode = strtolower( $languageCode );
+		$basePath = __DIR__ . "/i18n/";
+
+		$loadJson = static function ( string $path ) {
+			if ( !is_readable( $path ) ) {
+				return null;
+			}
+
+			$json = file_get_contents( $path );
+			if ( $json === false ) {
+				return null;
+			}
+
+			try {
+				return json_decode( $json, true, 512, JSON_THROW_ON_ERROR );
+			} catch ( Throwable $e ) {
+				return null;
+			}
+		};
+
+		$prefix = $languageCode;
+		if ( str_contains( $languageCode, '-' ) ) {
+			$prefix = explode( '-', $languageCode, 2 )[0];
+		}
+
+		// PASS 1: exact match
+		$exactPath = $basePath . "{$languageCode}.json";
+		$result = $loadJson( $exactPath );
+		if ( $result !== null ) {
+			return $result;
+		}
+
+		// PASS 2: prefix glob case-sensitive
+		$matches = glob( $basePath . "{$prefix}*.json" ) ?: [];
+		sort( $matches );
+
+		foreach ( $matches as $path ) {
+			$result = $loadJson( $path );
+			if ( $result !== null ) {
+				return $result;
+			}
+		}
+
+		// PASS 3: case-insensitive fallback
+		$allFiles = glob( $basePath . '*' ) ?: [];
+		$index = [];
+
+		foreach ( $allFiles as $file ) {
+			$index[strtolower( basename( $file ) )] = $file;
+		}
+
+		// exact (case-insensitive)
+		$path = $index[strtolower( "{$languageCode}.json" )] ?? null;
+		if ( $path ) {
+			$result = $loadJson( $path );
+			if ( $result !== null ) {
+				return $result;
+			}
+		}
+
+		// prefix (case-insensitive)
+		foreach ( $index as $name => $path ) {
+			if ( str_starts_with( $name, $prefix ) ) {
+				$result = $loadJson( $path );
+				if ( $result !== null ) {
+					return $result;
+				}
+			}
+		}
+
+		return null;
 	}
 
 	private function printContainer(
