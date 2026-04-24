@@ -268,27 +268,20 @@ class Filtered extends ResultPrinter {
 	private function addConfigToOutput( $id, $config ) {
 		$parserOutput = $this->getParser()->getOutput();
 		if ( $parserOutput !== null ) {
-			$getter = [ $parserOutput, 'getExtensionData' ];
-			$setter = [ $parserOutput, 'setExtensionData' ];
-
+			$previousConfig = $parserOutput->getExtensionData( 'srf-filtered-config' ) ?? [];
+			$previousConfig[$id] = $config;
+			$parserOutput->setExtensionData( 'srf-filtered-config', $previousConfig );
+			$parserOutput->setJsConfigVar( 'srfFilteredConfig', $previousConfig );
 		} else {
+			// Fallback for Special:Ask and other contexts where the parser has not been
+			// initialized with a ParserOutput (Parser::getOutput() returns null before
+			// initialization, deprecated since MW 1.42 — see #362).
+			// Config data is stored on OutputPage instead of ParserOutput.
 			$output = \RequestContext::getMain()->getOutput();
-			$getter = [ $output, 'getProperty' ];
-			$setter = [ $output, 'setProperty' ];
-		}
-
-		$previousConfig = call_user_func( $getter, 'srf-filtered-config' );
-
-		if ( $previousConfig === null ) {
-			$previousConfig = [];
-		}
-
-		$previousConfig[$id] = $config;
-
-		call_user_func( $setter, 'srf-filtered-config', $previousConfig );
-
-		if ( $parserOutput ) {
-				$parserOutput->setJsConfigVar( 'srfFilteredConfig', $previousConfig );
+			$previousConfig = $output->getProperty( 'srf-filtered-config' ) ?? [];
+			$previousConfig[$id] = $config;
+			$output->setProperty( 'srf-filtered-config', $previousConfig );
+			$output->addJsConfigVars( 'srfFilteredConfig', $previousConfig );
 		}
 	}
 
