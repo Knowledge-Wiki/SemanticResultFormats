@@ -33,14 +33,21 @@ class ListView extends View {
 	private $mNamedArgs;
 	private $mShowHeaders;
 	private $mUserParam;
+	private $mSep;
 
-	/** @var array */
+	/** @var array|null */
 	private $params;
 
 	/**
 	 * Transfers the parameters applicable to this view into internal variables.
+	 * Lazy initialisation: both getJsConfig() and getResultText() call this method;
+	 * the null-check on $this->params ensures parameters are read only once.
 	 */
 	protected function handleParameters(): void {
+		if ( $this->params !== null ) {
+			return;
+		}
+
 		$params = $this->getActualParameters();
 		$this->params = $params;
 
@@ -52,6 +59,7 @@ class ListView extends View {
 		$this->mUserParam = $params['list view userparam'];
 
 		$this->mShowHeaders = $params['headers'];
+		$this->mSep = $params['sep'];
 	}
 
 	public function getJsConfig() {
@@ -79,7 +87,7 @@ class ListView extends View {
 			$rowend = "</li>\n";
 
 			// ***diversify from the sep below if necessary
-			$listsep = $this->params['sep'];
+			$listsep = $this->mSep;
 		} else {
 			// "list" format
 			$header = '';
@@ -88,7 +96,7 @@ class ListView extends View {
 			$rowend = "</div>\n";
 
 			// ***diversify from the sep above if necessary
-			$listsep = $this->params['sep'];
+			$listsep = $this->mSep;
 		}
 
 		// Initialise more values
