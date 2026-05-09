@@ -1032,7 +1032,7 @@ class DataTables extends ResultPrinter {
 		} else {
 			$dataValueMethod = $this->prefixParameterProcessor->useLongText( $isSubject ) ? 'getLongText' : 'getShortText';
 		}
-		
+
 		$isHtmlOutput = $outputMode === SMW_OUTPUT_HTML;
 
 		// Keyword handling
