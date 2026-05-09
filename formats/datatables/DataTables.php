@@ -29,8 +29,8 @@ use SMW\Query\ResultPrinters\PrefixParameterProcessor;
 use SMW\Query\ResultPrinters\ResultPrinter;
 use SMW\Store;
 use SMW\Utils\HtmlTable;
-use SRF\DataTables\SearchPanes;
 use SMWQuery as Query;
+use SRF\DataTables\SearchPanes;
 
 class DataTables extends ResultPrinter {
 
