@@ -19,7 +19,8 @@ use MWException;
 use Parser;
 use RequestContext;
 use SMW\DataValues\PropertyValue;
-use SMW\DIWikiPage;
+use SMW\DataItems\Blob;
+use SMW\DataItems\WikiPage;
 use SMW\Localizer\Message;
 use SMW\Parser\RecursiveTextProcessor;
 use SMW\Query\PrintRequest;
@@ -28,9 +29,8 @@ use SMW\Query\ResultPrinters\PrefixParameterProcessor;
 use SMW\Query\ResultPrinters\ResultPrinter;
 use SMW\Store;
 use SMW\Utils\HtmlTable;
-use SMWDIBlob as DIBlob;
-use SMWQuery as Query;
 use SRF\DataTables\SearchPanes;
+use SMWQuery as Query;
 
 class DataTables extends ResultPrinter {
 
@@ -1051,8 +1051,8 @@ class DataTables extends ResultPrinter {
 			// - text formatting on string elements including italic, bold etc.
 			$parseAsWikitext =
 				$isHtmlOutput && (
-					( $dataItem instanceof DIWikiPage && $dataItem->getNamespace() === NS_FILE ) ||
-					( $dataItem instanceof DIBlob )
+					( $dataItem instanceof WikiPage && $dataItem->getNamespace() === NS_FILE ) ||
+					( $dataItem instanceof Blob )
 				);
 
 			// @see ListResultPrinter\ValueTextsBuilder -> getValueText
