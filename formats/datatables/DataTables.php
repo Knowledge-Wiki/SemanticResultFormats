@@ -1014,16 +1014,10 @@ class DataTables extends ResultPrinter {
 		bool $isSubject,
 		?string $propTypeid = null
 	): array {
-		if ( !$this->prefixParameterProcessor ) {
-			$dataValueMethod = 'getShortText';
-		} else {
-			$dataValueMethod = $this->prefixParameterProcessor->useLongText( $isSubject ) ? 'getLongText' : 'getShortText';
-		}
-
+		// Template support
 		$template = null;
 		if ( !empty( $this->printoutsParameters[$label]['template'] ) ) {
 			$template = $this->printoutsParameters[$label]['template'];
-
 		} elseif ( $isSubject && !empty( $this->params['mainlabel-template'] ) ) {
 			$template = $this->params['mainlabel-template'];
 		}
@@ -1032,35 +1026,63 @@ class DataTables extends ResultPrinter {
 			$outputMode = SMW_OUTPUT_WIKI;
 		}
 
-		// this is only used by SearchPanes
+		// Prefix parameter processor fallback
+		if ( !$this->prefixParameterProcessor ) {
+			$dataValueMethod = 'getShortText';
+		} else {
+			$dataValueMethod = $this->prefixParameterProcessor->useLongText( $isSubject ) ? 'getLongText' : 'getShortText';
+		}
+		
+		$isHtmlOutput = $outputMode === SMW_OUTPUT_HTML;
+
+		// Keyword handling
+		// @FIXME this is not the best way,
+		// try to use $isKeyword = $dataItem->getOption( 'is.keyword' );
+		// @see DIBlobHandler
 		$isKeyword = ( $propTypeid === '_keyw' );
+
 		$values = [];
 		foreach ( $dataValues as $dv ) {
+			$linker = $this->getLinker( $isSubject );
 			$dataItem = $dv->getDataItem();
+
 			// Restore output in Special:Ask on:
 			// - file/image parsing
 			// - text formatting on string elements including italic, bold etc.
-			if ( ( $outputMode === SMW_OUTPUT_HTML && $dataItem instanceof DIWikiPage && $dataItem->getNamespace() === NS_FILE ) ||
-				( $outputMode === SMW_OUTPUT_HTML && $dataItem instanceof DIBlob ) ) {
+			$parseAsWikitext =
+				$isHtmlOutput && (
+					( $dataItem instanceof DIWikiPage && $dataItem->getNamespace() === NS_FILE ) ||
+					( $dataItem instanceof DIBlob )
+				);
+
+			// @see ListResultPrinter\ValueTextsBuilder -> getValueText
+			$dv->setOption(
+				$dataValueMethod === 'getLongText'
+					? $dv::PREFIXED_FORM
+					: $dv::SHORT_FORM,
+				true
+			);
+
+			if ( $parseAsWikitext ) {
+				$raw = $dv->$dataValueMethod( SMW_OUTPUT_WIKI, $linker );
+
 				// Too lazy to handle the Parser object and besides the Message
 				// parse does the job and ensures no other hook is executed
 				$value = Message::get(
-					[ 'smw-parse', $dv->$dataValueMethod( SMW_OUTPUT_WIKI, $this->getLinker( $isSubject ) ) ],
+					[ 'smw-parse', $raw ],
 					Message::PARSE
 				);
 			} else {
-				$value = $dv->$dataValueMethod( $outputMode, $this->getLinker( $isSubject ) );
+				$value = $dv->$dataValueMethod( $outputMode, $linker );
 			}
 
-			// @FIXME this is not the best way,
-			// try to use $isKeyword = $dataItem->getOption( 'is.keyword' );
-			// @see DIBlobHandler
+			// Keyword normalization
 			if ( $isKeyword ) {
 				$value = $dataItem->normalize( $value );
 			}
 
+			// Template expansion
 			if ( $template ) {
-				// @fixme use named parameter ?
 				$titleTemplate = Title::makeTitle( NS_TEMPLATE,
 					Title::capitalize( trim( $template ), NS_TEMPLATE ) );
 				$value_ = $this->expandTemplate( $titleTemplate, [ 1 => $value ] );
@@ -1072,14 +1094,15 @@ class DataTables extends ResultPrinter {
 			$values[] = $value === '' ? '&nbsp;' : $value;
 		}
 
-		$sep = strtolower( $this->params['sep'] );
-
+		// Multiple values flag
 		// *** used to force use of Ajax with
 		// searchpanes since a client side solution
 		// won't produce reliable matches
 		if ( count( $values ) > 1 ) {
 			$this->hasMultipleValues = true;
 		}
+
+		$sep = strtolower( $this->params['sep'] );
 
 		if ( !$isSubject && $sep === 'ul' && count( $values ) > 1 ) {
 			$html = '<ul><li>' . implode( '</li><li>', $values ) . '</li></ul>';
@@ -1089,7 +1112,7 @@ class DataTables extends ResultPrinter {
 			$html = implode( $this->params['sep'], $values );
 		}
 
-		// $dataValues could be empty
+		// Return array with sort/filter keys (matching first method)
 		$sortKey = array_key_exists( 0, $dataValues ) ? $dataValues[0]->getDataItem()->getSortKey() : '';
 
 		return [
