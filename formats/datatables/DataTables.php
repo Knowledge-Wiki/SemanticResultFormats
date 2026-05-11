@@ -24,12 +24,12 @@ use SMW\DataItems\WikiPage;
 use SMW\Localizer\Message;
 use SMW\Parser\RecursiveTextProcessor;
 use SMW\Query\PrintRequest;
+use SMW\Query\Query;
 use SMW\Query\QueryResult;
 use SMW\Query\ResultPrinters\PrefixParameterProcessor;
 use SMW\Query\ResultPrinters\ResultPrinter;
 use SMW\Store;
 use SMW\Utils\HtmlTable;
-use SMWQuery as Query;
 use SRF\DataTables\SearchPanes;
 
 class DataTables extends ResultPrinter {
