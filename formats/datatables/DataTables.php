@@ -102,7 +102,7 @@ class DataTables extends ResultPrinter {
 
 		$params['prefix'] = [
 			'message' => 'smw-paramdesc-prefix',
-			'default' => 'none',
+			'default' => 'auto',
 			'values' => [ 'all', 'subject', 'none', 'auto' ],
 		];
 
