@@ -21,6 +21,7 @@ use RequestContext;
 use SMW\DataItems\Blob;
 use SMW\DataItems\WikiPage;
 use SMW\DataValues\PropertyValue;
+use SMW\DataValues\WikiPageValue;
 use SMW\Localizer\Message;
 use SMW\Parser\RecursiveTextProcessor;
 use SMW\Query\PrintRequest;
@@ -1056,12 +1057,14 @@ class DataTables extends ResultPrinter {
 				);
 
 			// @see ListResultPrinter\ValueTextsBuilder -> getValueText
-			$dv->setOption(
-				$dataValueMethod === 'getLongText'
-					? $dv::PREFIXED_FORM
-					: $dv::SHORT_FORM,
-				true
-			);
+			if ( $dv instanceof WikiPageValue ) {
+				$dv->setOption(
+					$dataValueMethod === 'getLongText'
+						? $dv::PREFIXED_FORM
+						: $dv::SHORT_FORM,
+					true
+				);
+			}
 
 			if ( $parseAsWikitext ) {
 				$raw = $dv->$dataValueMethod( SMW_OUTPUT_WIKI, $linker );
